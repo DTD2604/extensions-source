@@ -94,22 +94,6 @@ jobs:
             -name 'keiyoushi-source-info.json' \
             -print
 
-      - name: Verify downloaded artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          
-          echo "Artifacts directory:"
-          find "$HOME/apk-artifacts" -type f -print
-          
-          INFO_FILE="$HOME/apk-artifacts/damconuong/keiyoushi-source-info.json"
-          APK_DIR="$HOME/apk-artifacts/damconuong/outputs/apk/release"
-          JAR_DIR="$HOME/apk-artifacts/damconuong/outputs/jar/release"
-          
-          test -f "$INFO_FILE"
-          test -n "$(find "$APK_DIR" -type f -name '*.apk' -print -quit)"
-          test -n "$(find "$JAR_DIR" -type f -name '*.jar' -print -quit)"
-
       - name: Locate APK
         id: apk
         shell: bash
@@ -157,6 +141,22 @@ jobs:
         with:
           name: damconuong-artifacts
           path: ~/apk-artifacts/damconuong
+
+      - name: Verify downloaded artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Artifacts directory:"
+          find "$HOME/apk-artifacts" -type f -print
+
+          INFO_FILE="$HOME/apk-artifacts/damconuong/keiyoushi-source-info.json"
+          APK_DIR="$HOME/apk-artifacts/damconuong/outputs/apk/release"
+          JAR_DIR="$HOME/apk-artifacts/damconuong/outputs/jar/release"
+
+          test -f "$INFO_FILE"
+          test -n "$(find "$APK_DIR" -type f -name '*.apk' -print -quit)"
+          test -n "$(find "$JAR_DIR" -type f -name '*.jar' -print -quit)"
 
       - name: Checkout source scripts
         uses: actions/checkout@v4
