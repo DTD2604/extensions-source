@@ -91,13 +91,15 @@ jobs:
           echo "APK_PATH=$APK_PATH"
           echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
-      - name: Upload APK artifact
+      - name: Upload extension artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: damconuong-apk
+          name: damconuong-artifacts
           path: |
-            ${{ steps.apk.outputs.path }}
+            src/vi/damconuong/build/outputs/apk/release/*.apk
+            src/vi/damconuong/build/outputs/jar/release/*.jar
             src/vi/damconuong/build/keiyoushi-source-info.json
+          if-no-files-found: error
           retention-days: 1
 
       - name: Remove signing key
