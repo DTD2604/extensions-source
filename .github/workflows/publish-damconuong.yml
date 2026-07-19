@@ -71,6 +71,45 @@ jobs:
             --stacktrace \
             --no-daemon
 
+      - name: Verify build outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+      
+          echo "=== APK files ==="
+          find src/vi/damconuong/build/outputs/apk \
+            -type f \
+            -name '*.apk' \
+            -print
+      
+          echo "=== JAR files ==="
+          find src/vi/damconuong/build/outputs/jar \
+            -type f \
+            -name '*.jar' \
+            -print
+      
+          echo "=== Source metadata ==="
+          find src/vi/damconuong/build \
+            -type f \
+            -name 'keiyoushi-source-info.json' \
+            -print
+
+      - name: Verify downloaded artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "Artifacts directory:"
+          find "$HOME/apk-artifacts" -type f -print
+          
+          INFO_FILE="$HOME/apk-artifacts/damconuong/keiyoushi-source-info.json"
+          APK_DIR="$HOME/apk-artifacts/damconuong/outputs/apk/release"
+          JAR_DIR="$HOME/apk-artifacts/damconuong/outputs/jar/release"
+          
+          test -f "$INFO_FILE"
+          test -n "$(find "$APK_DIR" -type f -name '*.apk' -print -quit)"
+          test -n "$(find "$JAR_DIR" -type f -name '*.jar' -print -quit)"
+
       - name: Locate APK
         id: apk
         shell: bash
