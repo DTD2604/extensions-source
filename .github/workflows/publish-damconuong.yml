@@ -140,9 +140,9 @@ jobs:
         working-directory: repo
         env:
           APK_BASE_URL: >-
-            https://raw.githubusercontent.com/DTD2604/mihon-extensions/refs/heads/repo/apk
+            https://raw.githubusercontent.com/DTD2604/extensions/refs/heads/repo/apk
           ICON_BASE_URL: >-
-            https://raw.githubusercontent.com/DTD2604/mihon-extensions/refs/heads/repo/icon
+            https://raw.githubusercontent.com/DTD2604/extensions/refs/heads/repo/icon
         shell: bash
         run: |
           set -euo pipefail
