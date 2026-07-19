@@ -113,10 +113,10 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Download APK artifact
+      - name: Download extension artifacts
         uses: actions/download-artifact@v4
         with:
-          name: damconuong-apk
+          name: damconuong-artifacts
           path: ~/apk-artifacts/damconuong
 
       - name: Checkout source scripts
