@@ -38,9 +38,20 @@ REPO_APK_DIR.mkdir(parents=True, exist_ok=True)
 REPO_JAR_DIR.mkdir(parents=True, exist_ok=True)
 REPO_ICON_DIR.mkdir(parents=True, exist_ok=True)
 
-APK_BASE_URL = "https://cdn.jsdelivr.net/gh/keiyoushi/extensions@repo/apk"
-JAR_BASE_URL = "https://raw.githubusercontent.com/keiyoushi/extensions/repo/jar"
-ICON_BASE_URL = "https://cdn.jsdelivr.net/gh/keiyoushi/extensions@repo/icon"
+APK_BASE_URL = (
+    "https://raw.githubusercontent.com/"
+    "DTD2604/mihon-extensions/refs/heads/repo/apk"
+)
+
+ICON_BASE_URL = (
+    "https://raw.githubusercontent.com/"
+    "DTD2604/mihon-extensions/refs/heads/repo/icon"
+)
+
+JAR_BASE_URL = (
+    "https://raw.githubusercontent.com/"
+    "DTD2604/mihon-extensions/refs/heads/repo/jar"
+)
 
 to_delete: list[str] = json.loads(sys.argv[1])
 
