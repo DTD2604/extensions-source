@@ -20,29 +20,29 @@ concurrency:
 
 env:
   MODULE_PATH: ":src:vi:damconuong:assembleRelease"
-  DISTRIBUTION_REPO: "${{ vars.REPO_USERNAME }}/${{ vars.REPO_NAME }}"
+  DISTRIBUTION_REPO: "DTD2604/extensions"
 
 jobs:
-  build-and-publish:
-    name: Build and publish extension
+  build:
+    name: Build extension
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      - name: Checkout source repository
-        uses: actions/checkout@v6
+      - name: Checkout source
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Java 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Restore signing key
         shell: bash
@@ -55,10 +55,10 @@ jobs:
 
           test -s signingkey.jks
 
-      - name: Make Gradle wrapper executable
+      - name: Make Gradle executable
         run: chmod +x gradlew
 
-      - name: Build signed release APK
+      - name: Build release APK
         env:
           ALIAS: ${{ secrets.ALIAS }}
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
@@ -71,180 +71,86 @@ jobs:
             --stacktrace \
             --no-daemon
 
-      - name: Locate built APK
+      - name: Locate APK
         id: apk
         shell: bash
         run: |
           set -euo pipefail
 
-          APK_PATH="$(find src/vi/damconuong/build \
+          APK_PATH="$(find src/vi/damconuong/build/outputs/apk/release \
             -type f \
-            -name '*-release.apk' \
+            -name '*.apk' \
             | head -n 1)"
 
           if [ -z "$APK_PATH" ]; then
-            echo "Không tìm thấy release APK"
-            find src/vi/damconuong/build \
-              -type f \
-              -name '*.apk' \
-              -print || true
+            echo "Không tìm thấy APK"
+            find src/vi/damconuong/build -type f -name '*.apk' || true
             exit 1
           fi
 
-          echo "Found APK: $APK_PATH"
+          echo "APK_PATH=$APK_PATH"
           echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
-      - name: Verify APK signature
-        shell: bash
-        run: |
-          set -euo pipefail
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: damconuong-apk
+          path: |
+            ${{ steps.apk.outputs.path }}
+            src/vi/damconuong/build/keiyoushi-source-info.json
+          retention-days: 1
 
-          BUILD_TOOLS_DIR="$ANDROID_HOME/build-tools"
-          APKSIGNER="$(find "$BUILD_TOOLS_DIR" \
-            -type f \
-            -name apksigner \
-            | sort -V \
-            | tail -n 1)"
+      - name: Remove signing key
+        if: always()
+        run: rm -f signingkey.jks
 
-          if [ -z "$APKSIGNER" ]; then
-            echo "Không tìm thấy apksigner"
-            exit 1
-          fi
+  publish:
+    name: Publish extension repository
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
 
-          "$APKSIGNER" verify \
-            --verbose \
-            --print-certs \
-            "${{ steps.apk.outputs.path }}"
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: damconuong-apk
+          path: ~/apk-artifacts/damconuong
 
-      - name: Prepare APK artifact directory
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mkdir -p "$HOME/apk-artifacts/damconuong"
-
-          cp "${{ steps.apk.outputs.path }}" \
-            "$HOME/apk-artifacts/damconuong/"
-
-      - name: Move APK to temporary repo
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          python .github/scripts/move-built-apks.py
-
-          echo "Generated APK files:"
-          find repo/apk -type f -maxdepth 1 -print
-
-      - name: Download latest Extensions Inspector
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          INSPECTOR_LINK="$(
-            curl \
-              --fail \
-              --silent \
-              --show-error \
-              --location \
-              https://api.github.com/repos/keiyoushi/extensions-inspector/releases/latest \
-              | jq -r '.assets[0].browser_download_url'
-          )"
-
-          if [ -z "$INSPECTOR_LINK" ] || [ "$INSPECTOR_LINK" = "null" ]; then
-            echo "Không tìm thấy Extensions Inspector"
-            exit 1
-          fi
-
-          curl \
-            --fail \
-            --location \
-            "$INSPECTOR_LINK" \
-            --output Inspector.jar
-
-      - name: Inspect APK metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          java -jar Inspector.jar \
-            repo/apk \
-            output.json \
-            tmp
-
-          jq . output.json
-
-      - name: Generate repository files
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          python .github/scripts/create-repo.py
-
-          echo "Generated repository:"
-          find repo -maxdepth 2 -type f -print
-
-          echo "Generated index:"
-          cat repo/index.json | jq .
+      - name: Checkout source scripts
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+          persist-credentials: false
 
       - name: Checkout distribution repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           repository: ${{ env.DISTRIBUTION_REPO }}
           token: ${{ secrets.REPO_TOKEN }}
           ref: repo
-          path: distribution
+          path: repo
           persist-credentials: true
 
-      - name: Replace extension repository files
+      - name: Install Python dependencies
+        run: pip install protobuf
+
+      - name: Publish repository
+        working-directory: repo
+        env:
+          APK_BASE_URL: >-
+            https://raw.githubusercontent.com/DTD2604/mihon-extensions/refs/heads/repo/apk
+          ICON_BASE_URL: >-
+            https://raw.githubusercontent.com/DTD2604/mihon-extensions/refs/heads/repo/icon
         shell: bash
         run: |
           set -euo pipefail
 
-          mkdir -p distribution/apk
-          mkdir -p distribution/icon
+          python ../main/.github/scripts/publish-repo.py '[]'
 
-          rm -f distribution/apk/*.apk
-          rm -f distribution/icon/*.png
-
-          cp -R repo/apk/. distribution/apk/
-          cp -R repo/icon/. distribution/icon/
-
-          cp repo/index.json distribution/index.json
-
-          jq -c . distribution/index.json \
-            > distribution/index.min.json
-
-      - name: Create repository listing page
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cat > distribution/index.html <<'EOF'
-          <!DOCTYPE html>
-          <html lang="vi">
-          <head>
-              <meta charset="UTF-8">
-              <meta
-                  name="viewport"
-                  content="width=device-width, initial-scale=1"
-              >
-              <title>DamCoNuong Mihon Extension</title>
-          </head>
-          <body>
-              <h1>DamCoNuong Mihon Extension</h1>
-              <p>
-                  Repository dành cho extension Mihon cá nhân.
-              </p>
-              <p>
-                  Sử dụng file index.min.json để thêm repository.
-              </p>
-          </body>
-          </html>
-          EOF
-
-      - name: Commit and push distribution repository
-        working-directory: distribution
+      - name: Commit repository changes
+        working-directory: repo
         shell: bash
         run: |
           set -euo pipefail
@@ -256,20 +162,10 @@ jobs:
           git status
 
           if [ -z "$(git status --porcelain)" ]; then
-            echo "Không có thay đổi để publish"
+            echo "Không có thay đổi để commit"
             exit 0
           fi
 
-          git add apk icon index.json index.min.json index.html
-
-          git commit -m \
-            "Update DamCoNuong extension from ${GITHUB_SHA::7}"
-
+          git add .
+          git commit -m "Update DamCoNuong extension"
           git push origin repo
-
-      - name: Clean signing files
-        if: always()
-        shell: bash
-        run: |
-          rm -f signingkey.jks
-          rm -f Inspector.jar
