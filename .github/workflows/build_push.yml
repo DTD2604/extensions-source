@@ -172,7 +172,7 @@ jobs:
           cd repo
           pip install protobuf
           python ../main/.github/scripts/publish-repo.py "$DELETE"
-          git config --global user.email "156378334+DTD2604-bot@users.noreply.github.com"
+          git config --global user.email "100296543+DTD2604@users.noreply.github.com"
           git config --global user.name "DTD2604-bot"
           git status
           if [ -n "$(git status --porcelain)" ]; then
