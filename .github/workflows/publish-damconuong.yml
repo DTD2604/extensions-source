@@ -1,0 +1,217 @@
+name: Build and publish DamCoNuong
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/vi/damconuong/**"
+      - ".github/scripts/**"
+      - ".github/workflows/publish-damconuong.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-damconuong
+  cancel-in-progress: true
+
+env:
+  MODULE_PATH: ":src:vi:damconuong:assembleRelease"
+  DISTRIBUTION_REPO: "DTD2604/extensions"
+
+jobs:
+  build:
+    name: Build extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          printf '%s' "${{ secrets.SIGNING_KEY }}" \
+            | base64 --decode \
+            > signingkey.jks
+
+          test -s signingkey.jks
+
+      - name: Make Gradle executable
+        run: chmod +x gradlew
+
+      - name: Build release APK
+        env:
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ./gradlew "$MODULE_PATH" \
+            --stacktrace \
+            --no-daemon
+
+      - name: Verify build outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+      
+          echo "=== APK files ==="
+          find src/vi/damconuong/build/outputs/apk \
+            -type f \
+            -name '*.apk' \
+            -print
+      
+          echo "=== JAR files ==="
+          find src/vi/damconuong/build/outputs/jar \
+            -type f \
+            -name '*.jar' \
+            -print
+      
+          echo "=== Source metadata ==="
+          find src/vi/damconuong/build \
+            -type f \
+            -name 'keiyoushi-source-info.json' \
+            -print
+
+      - name: Locate APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK_PATH="$(find src/vi/damconuong/build/outputs/apk/release \
+            -type f \
+            -name '*.apk' \
+            | head -n 1)"
+
+          if [ -z "$APK_PATH" ]; then
+            echo "Không tìm thấy APK"
+            find src/vi/damconuong/build -type f -name '*.apk' || true
+            exit 1
+          fi
+
+          echo "APK_PATH=$APK_PATH"
+          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Upload extension artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: damconuong-artifacts
+          path: |
+            src/vi/damconuong/build/outputs/apk/release/*.apk
+            src/vi/damconuong/build/outputs/jar/release/*.jar
+            src/vi/damconuong/build/keiyoushi-source-info.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f signingkey.jks
+
+  publish:
+    name: Publish extension repository
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Download extension artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: damconuong-artifacts
+          path: ~/apk-artifacts/damconuong
+
+      - name: Verify downloaded artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Artifacts directory:"
+          find "$HOME/apk-artifacts" -type f -print
+
+          INFO_FILE="$HOME/apk-artifacts/damconuong/keiyoushi-source-info.json"
+          APK_DIR="$HOME/apk-artifacts/damconuong/outputs/apk/release"
+          JAR_DIR="$HOME/apk-artifacts/damconuong/outputs/jar/release"
+
+          test -f "$INFO_FILE"
+          test -n "$(find "$APK_DIR" -type f -name '*.apk' -print -quit)"
+          test -n "$(find "$JAR_DIR" -type f -name '*.jar' -print -quit)"
+
+      - name: Checkout source scripts
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+          persist-credentials: false
+
+      - name: Checkout distribution repository
+        uses: actions/checkout@v4
+        with:
+          repository: DTD2604/extensions
+          ref: repo
+          path: repo
+          token: ${{ secrets.REPO_TOKEN }}
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Install Python dependencies
+        run: pip install protobuf
+
+      - name: Publish repository
+        working-directory: repo
+        env:
+          APK_BASE_URL: >-
+            https://raw.githubusercontent.com/DTD2604/extensions/refs/heads/repo/apk
+          ICON_BASE_URL: >-
+            https://raw.githubusercontent.com/DTD2604/extensions/refs/heads/repo/icon
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python ../main/.github/scripts/publish-repo.py '[]'
+
+      - name: Commit and push repository
+        working-directory: repo
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          echo "Remote repository:"
+          git remote -v
+
+          echo "Current branch:"
+          git branch --show-current
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Không có thay đổi để commit"
+            exit 0
+          fi
+
+          git add .
+          git commit -m "Update DamCoNuong extension"
+          git push origin HEAD:repo
