@@ -12,6 +12,6 @@ keiyoushi {
 
     source {
         lang = "vi"
-        baseUrl = "https://cuutruyen.moe"
+        baseUrl = "https://cuutruyen.net"
     }
 }

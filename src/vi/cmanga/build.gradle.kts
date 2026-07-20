@@ -6,7 +6,7 @@ plugins {
 
 keiyoushi {
     name = "CManga"
-    versionCode = 4
+    versionCode = 1
     contentWarning = ContentWarning.SAFE
     libVersion = "1.4"
 

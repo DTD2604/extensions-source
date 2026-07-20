@@ -22,6 +22,16 @@ def run_command(command: str) -> str:
     return result.stdout.strip()
 
 
+def batched(iterable, n: int):
+    if hasattr(itertools, "batched"):
+        yield from itertools.batched(iterable, n)
+        return
+
+    iterator = iter(iterable)
+    while batch := tuple(itertools.islice(iterator, n)):
+        yield batch
+
+
 def resolve_dependent_libs(libs: set[str]) -> set[str]:
     """
     returns all libs which depend on any of the passed libs (/lib),
@@ -118,7 +128,7 @@ def resolve_ext(multisrcs: set[str], libs: set[str]) -> set[tuple[str, str]]:
 
     return extensions
 
-def get_module_list(ref: str) -> tuple[list[str], list[str]]:
+def get_changed_modules(ref: str) -> tuple[list[str], list[str]]:
     diff_output = run_command(f"git diff --name-status {ref}").splitlines()
 
     changed_files = [
@@ -136,80 +146,82 @@ def get_module_list(ref: str) -> tuple[list[str], list[str]]:
     for file in map(lambda x: Path(x).as_posix(), changed_files):
         if CORE_FILES_REGEX.search(file):
             core_files_changed = True
-
         elif match := EXTENSION_REGEX.search(file):
             lang = match.group("lang")
             extension = match.group("extension")
             if Path("src", lang, extension).is_dir():
-                modules.add(f':src:{lang}:{extension}')
+                modules.add(f":src:{lang}:{extension}")
             deleted.add(f"{lang}.{extension}")
-
         elif match := MULTISRC_LIB_REGEX.search(file):
             multisrc = match.group("multisrc")
             if Path("lib-multisrc", multisrc).is_dir():
                 multisrcs.add(multisrc)
-
         elif match := LIB_REGEX.search(file):
             lib = match.group("lib")
             if Path("lib", lib).is_dir():
                 libs.add(lib)
 
     if core_files_changed:
-        (all_modules, all_deleted) = get_all_modules()
-
-        # update existing set so we include deleted extensions
+        all_modules, all_deleted = get_all_modules()
         modules.update(all_modules)
         deleted.update(all_deleted)
+        return sorted(modules), sorted(deleted)
 
-        return list(modules), list(deleted)
-
-    # Resolve libs that depend on the changed libs (recursively)
-    libs.update(
-        resolve_dependent_libs(libs)
-    )
-
-    # Resolve multisrcs that depend on the changed libs
-    multisrcs.update(
-        resolve_multisrc_lib(libs)
-    )
-
-    # Resolve extensions that depend on the changed multisrcs or libs
+    libs.update(resolve_dependent_libs(libs))
+    multisrcs.update(resolve_multisrc_lib(libs))
     extensions = resolve_ext(multisrcs, libs)
     modules.update([f":src:{lang}:{extension}" for lang, extension in extensions])
     deleted.update([f"{lang}.{extension}" for lang, extension in extensions])
 
-    return list(modules), list(deleted)
+    return sorted(modules), sorted(deleted)
+
+
+def get_modules(ref: str, mode: str) -> tuple[list[str], list[str]]:
+    if mode == "all":
+        return get_all_modules()
+    if mode == "changed":
+        return get_changed_modules(ref)
+    raise ValueError(f"Unsupported mode: {mode}")
+
 
 def get_all_modules() -> tuple[list[str], list[str]]:
     modules = []
     deleted = []
-    for lang in Path("src").iterdir():
-        for extension in lang.iterdir():
+    for lang in sorted(Path("src").iterdir(), key=lambda path: path.name):
+        for extension in sorted(lang.iterdir(), key=lambda path: path.name):
             modules.append(f":src:{lang.name}:{extension.name}")
             deleted.append(f"{lang.name}.{extension.name}")
     return modules, deleted
 
-def main() -> None:
-    _, ref, build_type = sys.argv
-    modules, deleted = get_module_list(ref)
 
-    chunked = {
+def chunk_modules(modules: list[str], build_type: str) -> dict[str, list[dict[str, object]]]:
+    chunk_size = int(os.getenv("CI_CHUNK_SIZE", 65))
+    gradle_tasks = [f"{module}:assemble{build_type}" for module in modules]
+    return {
         "chunk": [
-            {"number": i + 1, "modules": modules}
-            for i, modules in
-            enumerate(itertools.batched(
-                map(lambda x: f"{x}:assemble{build_type}", modules),
-                int(os.getenv("CI_CHUNK_SIZE", 65))
-            ))
+            {"number": i + 1, "modules": chunk}
+            for i, chunk in enumerate(batched(gradle_tasks, chunk_size))
         ]
     }
 
-    print(f"Module chunks to build:\n{json.dumps(chunked, indent=2)}\n\nModule to delete:\n{json.dumps(deleted, indent=2)}")
+
+def main() -> None:
+    _, ref, build_type, mode = sys.argv
+    modules, deleted = get_modules(ref, mode)
+    chunked = chunk_modules(modules, build_type)
+
+    print(
+        "Module chunks to build:\n"
+        f"{json.dumps(chunked, indent=2)}\n\n"
+        "Module to delete:\n"
+        f"{json.dumps(deleted, indent=2)}"
+    )
 
     if os.getenv("CI") == "true":
-        with open(os.getenv("GITHUB_OUTPUT"), 'a') as out_file:
+        with open(os.getenv("GITHUB_OUTPUT"), "a", encoding="utf-8") as out_file:
             out_file.write(f"matrix={json.dumps(chunked)}\n")
             out_file.write(f"delete={json.dumps(deleted)}\n")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

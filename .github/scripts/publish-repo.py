@@ -38,20 +38,27 @@ REPO_APK_DIR.mkdir(parents=True, exist_ok=True)
 REPO_JAR_DIR.mkdir(parents=True, exist_ok=True)
 REPO_ICON_DIR.mkdir(parents=True, exist_ok=True)
 
-APK_BASE_URL = (
-    "https://raw.githubusercontent.com/"
-    "DTD2604/mihon-extensions/refs/heads/repo/apk"
+APK_BASE_URL = os.environ.get(
+    "APK_BASE_URL",
+    "https://raw.githubusercontent.com/DTD2604/extensions/refs/heads/repo/apk",
 )
 
-ICON_BASE_URL = (
-    "https://raw.githubusercontent.com/"
-    "DTD2604/mihon-extensions/refs/heads/repo/icon"
+ICON_BASE_URL = os.environ.get(
+    "ICON_BASE_URL",
+    "https://raw.githubusercontent.com/DTD2604/extensions/refs/heads/repo/icon",
 )
 
-JAR_BASE_URL = (
-    "https://raw.githubusercontent.com/"
-    "DTD2604/mihon-extensions/refs/heads/repo/jar"
+JAR_BASE_URL = os.environ.get(
+    "JAR_BASE_URL",
+    "https://raw.githubusercontent.com/DTD2604/extensions/refs/heads/repo/jar",
 )
+
+
+def require_match(match: re.Match[str] | None, message: str) -> re.Match[str]:
+    if match is None:
+        raise ValueError(message)
+    return match
+
 
 to_delete: list[str] = json.loads(sys.argv[1])
 
@@ -95,7 +102,10 @@ for info_file in ARTIFACTS_DIR.glob("**/keiyoushi-source-info.json"):
     badging = subprocess.check_output(
         [aapt(), "dump", "--include-meta-data", "badging", apk]
     ).decode()
-    application_icon = APPLICATION_ICON_320_REGEX.search(badging).group(1)
+    application_icon = require_match(
+        APPLICATION_ICON_320_REGEX.search(badging),
+        f"{package_name}: application-icon-320 metadata missing",
+    ).group(1)
     with (
         ZipFile(apk) as z,
         z.open(application_icon) as i,
@@ -142,11 +152,11 @@ all_extensions.extend(new_extensions)
 all_extensions.sort(key=lambda ext: ext.packageName)
 
 index = index_pb2.Index(
-    name="Keiyoushi",
-    badgeLabel="KEI",
-    signingKey="9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2",
+    name="Dowin",
+    badgeLabel="DW",
+    signingKey="4557d8e7f930e022f56b1e626da60364b921a036d309351a98188901e1758e89",
     contact=index_pb2.Contact(
-        website="https://keiyoushi.github.io", discord="https://discord.gg/3FbCpdKbdY"
+        website="https://dtd2604.github.io/extensions/"
     ),
     extensionList=index_pb2.ExtensionList(extensions=all_extensions),
 )

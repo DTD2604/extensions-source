@@ -16,3 +16,5 @@ generated-src/
 *.jks
 keystore.properties
 *.base64.*
+.vscode
+.claude
