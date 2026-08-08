@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.extension.vi.damconuong
+package eu.kanade.tachiyomi.extension.vi.donghentai
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -21,7 +21,7 @@ import java.util.Locale
 import java.util.TimeZone
 
 @Source
-abstract class DamCoNuong : HttpSource() {
+abstract class DongHentai : HttpSource() {
     override val supportsLatest = true
 
     override val client = network.client.newBuilder()
