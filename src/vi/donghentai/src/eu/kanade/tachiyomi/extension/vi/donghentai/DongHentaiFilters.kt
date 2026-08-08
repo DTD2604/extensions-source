@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.extension.vi.damconuong
+package eu.kanade.tachiyomi.extension.vi.donghentai
 
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
