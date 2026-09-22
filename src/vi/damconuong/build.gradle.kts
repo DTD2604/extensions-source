@@ -12,6 +12,6 @@ keiyoushi {
 
     source {
         lang = "vi"
-        baseUrl = "https://damconuong.sbs"
+        baseUrl = "https://damconuong.name"
     }
 }
