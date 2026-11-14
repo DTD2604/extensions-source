@@ -29,10 +29,12 @@ class GalleryItem(
 ) {
     fun toSMangaOrNull(thumbServer: String, fullTitle: Boolean): SManga? {
         val rawTitle = englishTitle ?: japaneseTitle ?: return null
+        val host = thumbServer.removeSuffix("/")
+        val path = thumbnail.removePrefix("/")
         return SManga.create().apply {
             url = "/g/$id/"
             title = if (fullTitle) rawTitle else rawTitle.shortenTitle()
-            thumbnail_url = "$thumbServer/$thumbnail"
+            thumbnail_url = "$host/$path"
             status = SManga.COMPLETED
             update_strategy = UpdateStrategy.ONLY_FETCH_ONCE
         }
@@ -58,7 +60,9 @@ class Hentai(
         } else {
             titles.pretty ?: (titles.english ?: titles.japanese)!!.shortenTitle()
         }
-        thumbnail_url = "$thumbServer/${thumbnail.path}"
+        val host = thumbServer.removeSuffix("/")
+        val path = thumbnail.path.removePrefix("/")
+        thumbnail_url = "$host/$path"
         status = SManga.COMPLETED
         artist = getArtists(this@Hentai)
         author = getGroups(this@Hentai) ?: getArtists(this@Hentai)

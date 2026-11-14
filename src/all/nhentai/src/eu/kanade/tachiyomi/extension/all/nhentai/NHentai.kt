@@ -112,7 +112,7 @@ class NHentai(
 
     override fun Headers.Builder.configureHeaders(): Headers.Builder = setRandomUserAgent(
         filterInclude = listOf("chrome"),
-    )
+    ).set("Referer", "$baseUrl/")
 
     override suspend fun getPopularManga(page: Int): MangasPage {
         val url = "$apiUrl/search".toHttpUrl().newBuilder()
@@ -198,7 +198,9 @@ class NHentai(
         val data = getGallery(chapter.url.removeSurrounding("/g/", "/"))
         val imageServers = getConfig().imageServers
         return data.pages.mapIndexed { i, page ->
-            Page(i, imageUrl = "${imageServers.random()}/${page.path}")
+            val host = imageServers.random().removeSuffix("/")
+            val path = page.path.removePrefix("/")
+            Page(i, imageUrl = "$host/$path")
         }
     }
 
