@@ -8,7 +8,7 @@
 
 ## Usage
 
-* Otherwise, copy & paste the following URL: https://raw.githubusercontent.com/DTD2604/extensions/repo/index.min.json
+* Otherwise, copy & paste the following URL: [https://raw.githubusercontent.com/DTD2604/extensions/repo/index.min.json](https://github.com/DTD2604/extensions/blob/repo/index.pb)
 
 ## Requests
 
