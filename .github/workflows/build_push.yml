@@ -32,7 +32,7 @@ jobs:
       delete: ${{ steps.generate-matrices.outputs.delete }}
     steps:
       - name: Checkout main branch
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -74,7 +74,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     steps:
       - name: Checkout main branch
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
@@ -142,14 +142,14 @@ jobs:
           path: ~/apk-artifacts
 
       - name: Checkout main branch
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@v4
         with:
           ref: main
           path: main
           persist-credentials: false
 
       - name: Checkout repo branch
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@v4
         with:
           repository: DTD2604/extensions
           token: ${{ secrets.REPO_TOKEN }}
