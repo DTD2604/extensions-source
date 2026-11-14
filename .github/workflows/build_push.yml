@@ -130,8 +130,7 @@ jobs:
       (
         needs.build.result == 'success' ||
         needs.prepare.outputs.delete != '[]'
-      )&&
-      needs.prepare.outputs.delete != '[]'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
