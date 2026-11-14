@@ -1,0 +1,75 @@
+package eu.kanade.tachiyomi.extension.all.nhentai
+
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+
+fun getFilters(defaultSort: String?) = FilterList(
+    Filter.Header("Separate tags with commas (,)"),
+    Filter.Header("Prepend with dash (-) to exclude"),
+    TagFilter(),
+    CategoryFilter(),
+    GroupFilter(),
+    ArtistFilter(),
+    ParodyFilter(),
+    CharactersFilter(),
+    Filter.Header("Uploaded valid units are h, d, w, m, y."),
+    Filter.Header("example: (>20d)"),
+    UploadedFilter(),
+    Filter.Header("Filter by pages, for example: (>20)"),
+    PagesFilter(),
+
+    Filter.Separator(),
+    SortFilter(SORT_OPTIONS.indexOfFirst { it.second == defaultSort }.coerceAtLeast(0)),
+    OffsetPageFilter(),
+    Filter.Header("Sort is ignored if favorites only"),
+    FavoriteFilter(),
+)
+
+fun FilterList.combineQuery(): String = buildString {
+    filterIsInstance<AdvSearchEntryFilter>().forEach { filter ->
+        filter.state.split(",")
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .forEach { tag ->
+                val y = !(filter.name == "Pages" || filter.name == "Uploaded")
+                if (tag.startsWith("-")) append("-")
+                append(filter.name, ':')
+                if (y) append('"')
+                append(tag.removePrefix("-"))
+                if (y) append('"')
+                append(" ")
+            }
+    }
+}
+
+class TagFilter : AdvSearchEntryFilter("Tags")
+class CategoryFilter : AdvSearchEntryFilter("Categories")
+class GroupFilter : AdvSearchEntryFilter("Groups")
+class ArtistFilter : AdvSearchEntryFilter("Artists")
+class ParodyFilter : AdvSearchEntryFilter("Parodies")
+class CharactersFilter : AdvSearchEntryFilter("Characters")
+class UploadedFilter : AdvSearchEntryFilter("Uploaded")
+class PagesFilter : AdvSearchEntryFilter("Pages")
+open class AdvSearchEntryFilter(name: String) : Filter.Text(name)
+
+class OffsetPageFilter : Filter.Text("Offset results by # pages")
+
+class FavoriteFilter : Filter.CheckBox("Show favorites only", false)
+
+class SortFilter(default: Int) : UriPartFilter("Sort By", SORT_OPTIONS, default)
+
+open class UriPartFilter(
+    displayName: String,
+    val vals: Array<Pair<String, String>>,
+    state: Int,
+) : Filter.Select<String>(displayName, vals.map { it.first }.toTypedArray(), state) {
+    fun toUriPart() = vals[state].second
+}
+
+val SORT_OPTIONS = arrayOf(
+    Pair("Popular: All Time", "popular"),
+    Pair("Popular: Month", "popular-month"),
+    Pair("Popular: Week", "popular-week"),
+    Pair("Popular: Today", "popular-today"),
+    Pair("Recent", "date"),
+)
