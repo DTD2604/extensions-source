@@ -23,14 +23,22 @@ class PaginatedResponse<T>(
 @Serializable
 class GalleryItem(
     private val id: Int,
-    private val thumbnail: String,
+    private val thumbnail: String? = null,
+    @SerialName("media_id") private val mediaId: String? = null,
+    private val title: Title? = null,
     @SerialName("english_title") private val englishTitle: String? = null,
     @SerialName("japanese_title") private val japaneseTitle: String? = null,
 ) {
     fun toSMangaOrNull(thumbServer: String, fullTitle: Boolean): SManga? {
-        val rawTitle = englishTitle ?: japaneseTitle ?: return null
+        val rawTitle = englishTitle
+            ?: japaneseTitle
+            ?: title?.english
+            ?: title?.japanese
+            ?: title?.pretty
+            ?: return null
+        val thumbPath = thumbnail ?: mediaId?.let { "galleries/$it/thumb.webp" } ?: return null
         val host = thumbServer.removeSuffix("/")
-        val path = thumbnail.removePrefix("/")
+        val path = thumbPath.removePrefix("/")
         return SManga.create().apply {
             url = "/g/$id/"
             title = if (fullTitle) rawTitle else rawTitle.shortenTitle()

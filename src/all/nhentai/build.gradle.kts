@@ -6,7 +6,7 @@ plugins {
 
 keiyoushi {
     name = "NHentai"
-    versionCode = 2
+    versionCode = 3
     contentWarning = ContentWarning.NSFW
     libVersion = "1.6"
 
@@ -28,8 +28,4 @@ keiyoushi {
         host("nhentai.net")
         path("/g/..*")
     }
-}
-
-dependencies {
-    implementation(project(":lib:randomua"))
 }

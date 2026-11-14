@@ -15,8 +15,6 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import keiyoushi.annotation.Source
-import keiyoushi.lib.randomua.addRandomUAPreference
-import keiyoushi.lib.randomua.setRandomUserAgent
 import keiyoushi.network.get
 import keiyoushi.network.rateLimit
 import keiyoushi.source.KeiSource
@@ -110,9 +108,15 @@ class NHentai(
             .rateLimit(permits, period.seconds) { it.host == baseUrlHost }
     }
 
-    override fun Headers.Builder.configureHeaders(): Headers.Builder = setRandomUserAgent(
-        filterInclude = listOf("chrome"),
-    ).set("Referer", "$baseUrl/")
+    override fun Headers.Builder.configureHeaders(): Headers.Builder = apply {
+        set("Referer", "$baseUrl/")
+        set("Origin", baseUrl)
+        set("Accept", "application/json, text/plain, */*")
+        set("X-Requested-With", "XMLHttpRequest")
+        set("Sec-Fetch-Site", "same-origin")
+        set("Sec-Fetch-Mode", "cors")
+        set("Sec-Fetch-Dest", "empty")
+    }
 
     override suspend fun getPopularManga(page: Int): MangasPage {
         val url = "$apiUrl/search".toHttpUrl().newBuilder()
@@ -239,8 +243,6 @@ class NHentai(
             summary = "Profile > Settings > API Keys"
             setDefaultValue("")
         }.let(screen::addPreference)
-
-        screen.addRandomUAPreference()
 
         ListPreference(screen.context).apply {
             key = RATE_LIMIT_PREF
