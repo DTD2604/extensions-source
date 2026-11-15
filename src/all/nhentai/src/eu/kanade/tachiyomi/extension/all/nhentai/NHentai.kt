@@ -1,6 +1,5 @@
 package eu.kanade.tachiyomi.extension.all.nhentai
 
-import android.app.Application
 import android.content.SharedPreferences
 import android.webkit.CookieManager
 import android.widget.Toast
@@ -22,7 +21,6 @@ import keiyoushi.utils.firstInstanceOrNull
 import keiyoushi.utils.getPreferencesLazy
 import keiyoushi.utils.parseAs
 import kotlinx.serialization.json.JsonElement
-import okhttp3.Cache
 import okhttp3.CacheControl
 import okhttp3.Headers
 import okhttp3.HttpUrl
@@ -30,9 +28,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
-import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -91,36 +87,24 @@ class NHentai(
             }
         }
 
-    override fun OkHttpClient.Builder.configureClient(): OkHttpClient.Builder {
+    override fun OkHttpClient.Builder.configureClient(): OkHttpClient.Builder = apply {
         val (permits, period) = preferences.parseRateLimit()
-
-        val app = Injekt.get<Application>()
-        val cacheParent = app.cacheDir
-            .takeIf { it.exists() || it.mkdirs() }
-            ?: app.externalCacheDir
-            ?: app.filesDir
-        val cacheDirectory = File(cacheParent, "nhentai_api_cache_$lang")
-
-        return cache(Cache(directory = cacheDirectory, maxSize = 5L * 1024 * 1024))
-            .addInterceptor(NhApiRetryInterceptor())
-            .addNetworkInterceptor(NhGalleryCacheInterceptor())
-            .addNetworkInterceptor(NhAuthorizationInterceptor())
-            .rateLimit(permits, period.seconds) { it.host == baseUrlHost }
+        addInterceptor(NhApiRetryInterceptor())
+        addNetworkInterceptor(NhGalleryCacheInterceptor())
+        addNetworkInterceptor(NhAuthorizationInterceptor())
+        rateLimit(permits, period.seconds) { it.host == baseUrlHost }
     }
 
     override fun Headers.Builder.configureHeaders(): Headers.Builder = apply {
         set("Referer", "$baseUrl/")
-        set("Origin", baseUrl)
         set("Accept", "application/json, text/plain, */*")
         set("X-Requested-With", "XMLHttpRequest")
-        set("Sec-Fetch-Site", "same-origin")
-        set("Sec-Fetch-Mode", "cors")
-        set("Sec-Fetch-Dest", "empty")
     }
 
     override suspend fun getPopularManga(page: Int): MangasPage {
+        val query = if (nhLang.isEmpty()) "pages:>0" else "language:$nhLang"
         val url = "$apiUrl/search".toHttpUrl().newBuilder()
-            .addQueryParameter("query", if (nhLang.isEmpty()) "\"\"" else "language:$nhLang")
+            .addQueryParameter("query", query)
             .addQueryParameter("sort", "popular")
             .addQueryParameter("page", page.toString())
         return client.get(url.build()).toMangasPage()
