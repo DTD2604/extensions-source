@@ -13,9 +13,9 @@ fun getFilters(defaultSort: String?) = FilterList(
     ParodyFilter(),
     CharactersFilter(),
     Filter.Header("Uploaded valid units are h, d, w, m, y."),
-    Filter.Header("example: (>20d)"),
+    Filter.Header("example: >20d"),
     UploadedFilter(),
-    Filter.Header("Filter by pages, for example: (>20)"),
+    Filter.Header("Filter by pages, for example: >20"),
     PagesFilter(),
 
     Filter.Separator(),
@@ -32,17 +32,28 @@ fun FilterList.combineQuery(): String = buildString {
             .filter(String::isNotEmpty)
             .forEach { tag ->
                 val isQuoted = filter.queryKey != "pages" && filter.queryKey != "uploaded"
-                if (tag.startsWith("-")) append("-")
-                append(filter.queryKey, ':')
-                val cleanTag = tag.removePrefix("-").trim().removeSurrounding("\"")
-                if (isQuoted) {
-                    append('"')
-                    append(cleanTag)
-                    append('"')
-                } else {
-                    append(cleanTag)
+                val isNegative = tag.startsWith("-")
+                var cleanTag = tag.removePrefix("-").trim()
+                if (cleanTag.startsWith("${filter.queryKey}:", ignoreCase = true)) {
+                    cleanTag = cleanTag.substring("${filter.queryKey}:".length).trim()
                 }
-                append(" ")
+                cleanTag = cleanTag.removeSurrounding("\"").trim()
+                if (!isQuoted) {
+                    cleanTag = cleanTag.trim('(', ')').trim()
+                        .replace(Regex("""([><=]+)\s+"""), "$1")
+                }
+                if (cleanTag.isNotEmpty()) {
+                    if (isNegative) append("-")
+                    append(filter.queryKey, ':')
+                    if (isQuoted) {
+                        append('"')
+                        append(cleanTag)
+                        append('"')
+                    } else {
+                        append(cleanTag)
+                    }
+                    append(" ")
+                }
             }
     }
 }
