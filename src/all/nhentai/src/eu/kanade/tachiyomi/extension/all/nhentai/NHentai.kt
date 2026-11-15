@@ -120,21 +120,28 @@ class NHentai(
     }
 
     private suspend fun getPopularMangaApi(page: Int): MangasPage {
-        val url = "$apiUrl/search".toHttpUrl().newBuilder()
-            .addQueryParameter("query", if (nhLang.isEmpty()) "" else "language:$nhLang")
-            .addQueryParameter("sort", "popular")
-            .addQueryParameter("page", page.toString())
+        val url = if (nhLang.isEmpty()) {
+            "$apiUrl/galleries".toHttpUrl().newBuilder()
+        } else {
+            "$apiUrl/search".toHttpUrl().newBuilder()
+                .addQueryParameter("query", "language:$nhLang")
+                .addQueryParameter("sort", "popular")
+        }
+        url.addQueryParameter("page", page.toString())
         return client.get(url.build(), apiHeaders).toMangasPage()
     }
 
     private suspend fun getPopularMangaHtml(page: Int): MangasPage {
         val url = if (nhLang.isEmpty()) {
-            "$baseUrl/search/?sort=popular&page=$page"
+            "$baseUrl/?page=$page"
         } else {
-            "$baseUrl/language/$nhLang/popular?page=$page"
+            "$baseUrl/search/?q=language:$nhLang&sort=popular&page=$page"
         }
         val response = client.get(url.toHttpUrl(), htmlHeaders)
-        return parseHtmlMangasPage(response)
+        val result = parseHtmlMangasPage(response)
+        if (result.mangas.isNotEmpty()) return result
+        val fallbackResponse = client.get("$baseUrl/?page=$page".toHttpUrl(), htmlHeaders)
+        return parseHtmlMangasPage(fallbackResponse)
     }
 
     override suspend fun getLatestUpdates(page: Int): MangasPage = try {
@@ -159,10 +166,13 @@ class NHentai(
         val url = if (nhLang.isEmpty()) {
             "$baseUrl/?page=$page"
         } else {
-            "$baseUrl/language/$nhLang/?page=$page"
+            "$baseUrl/search/?q=language:$nhLang&page=$page"
         }
         val response = client.get(url.toHttpUrl(), htmlHeaders)
-        return parseHtmlMangasPage(response)
+        val result = parseHtmlMangasPage(response)
+        if (result.mangas.isNotEmpty()) return result
+        val fallbackResponse = client.get("$baseUrl/?page=$page".toHttpUrl(), htmlHeaders)
+        return parseHtmlMangasPage(fallbackResponse)
     }
 
     override suspend fun getSearchMangaList(page: Int, query: String, filters: FilterList): MangasPage {
@@ -191,18 +201,24 @@ class NHentai(
         val offsetPage =
             filterList.firstInstanceOrNull<OffsetPageFilter>()?.state?.toIntOrNull()?.plus(page) ?: page
 
-        val url = if (favoriteFilter?.state == true) {
-            "$apiUrl/favorites".toHttpUrl().newBuilder()
+        if (favoriteFilter?.state == true) {
+            val favUrl = "$apiUrl/favorites".toHttpUrl().newBuilder()
                 .addQueryParameter("q", "$query $advQuery".trim())
                 .addQueryParameter("page", offsetPage.toString())
+            return client.get(favUrl.build(), apiHeaders).toMangasPage()
+        }
+
+        val fullQuery = "$query $nhLangSearch$advQuery".trim()
+        val url = if (fullQuery.isEmpty()) {
+            "$apiUrl/galleries".toHttpUrl().newBuilder()
         } else {
             "$apiUrl/search".toHttpUrl().newBuilder()
-                .addQueryParameter("query", "$query $nhLangSearch$advQuery".trim().ifBlank { "\"\"" })
-                .addQueryParameter("page", offsetPage.toString())
+                .addQueryParameter("query", fullQuery)
                 .apply {
                     filterList.firstInstanceOrNull<SortFilter>()?.let { addQueryParameter("sort", it.toUriPart()) }
                 }
         }
+        url.addQueryParameter("page", offsetPage.toString())
         return client.get(url.build(), apiHeaders).toMangasPage()
     }
 
@@ -214,19 +230,25 @@ class NHentai(
         val offsetPage =
             filterList.firstInstanceOrNull<OffsetPageFilter>()?.state?.toIntOrNull()?.plus(page) ?: page
 
-        val url = if (favoriteFilter?.state == true) {
-            "$baseUrl/favorites/".toHttpUrl().newBuilder()
+        if (favoriteFilter?.state == true) {
+            val favUrl = "$baseUrl/favorites/".toHttpUrl().newBuilder()
                 .addQueryParameter("q", "$query $advQuery".trim())
                 .addQueryParameter("page", offsetPage.toString())
+            val response = client.get(favUrl.build(), htmlHeaders)
+            return parseHtmlMangasPage(response)
+        }
+
+        val fullQuery = "$query $nhLangSearch$advQuery".trim()
+        val url = if (fullQuery.isEmpty()) {
+            "$baseUrl/".toHttpUrl().newBuilder()
         } else {
-            val fullQuery = "$query $nhLangSearch$advQuery".trim()
             "$baseUrl/search/".toHttpUrl().newBuilder()
+                .addQueryParameter("q", fullQuery)
                 .apply {
-                    if (fullQuery.isNotEmpty()) addQueryParameter("q", fullQuery)
                     filterList.firstInstanceOrNull<SortFilter>()?.let { addQueryParameter("sort", it.toUriPart()) }
-                    addQueryParameter("page", offsetPage.toString())
                 }
         }
+        url.addQueryParameter("page", offsetPage.toString())
         val response = client.get(url.build(), htmlHeaders)
         return parseHtmlMangasPage(response)
     }
