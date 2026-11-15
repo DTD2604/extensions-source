@@ -121,25 +121,28 @@ class NHentai(
     }
 
     private suspend fun getPopularMangaApi(page: Int): MangasPage {
-        val query = if (nhLang.isEmpty()) "pages:>0" else "language:$nhLang"
-        val url = "$apiUrl/search".toHttpUrl().newBuilder()
-            .addQueryParameter("query", query)
-            .addQueryParameter("sort", "popular")
-            .addQueryParameter("page", page.toString())
+        val url = if (nhLang.isEmpty()) {
+            "$apiUrl/galleries".toHttpUrl().newBuilder()
+        } else {
+            "$apiUrl/search".toHttpUrl().newBuilder()
+                .addQueryParameter("query", "language:$nhLang")
+                .addQueryParameter("sort", "popular")
+        }
+        url.addQueryParameter("page", page.toString())
         return client.get(url.build(), apiHeaders).toMangasPage()
     }
 
     private suspend fun getPopularMangaHtml(page: Int): MangasPage {
-        val url = if (nhLang.isEmpty()) {
-            "$baseUrl/popular/?page=$page"
-        } else {
-            "$baseUrl/language/$nhLang/popular/?page=$page"
+        if (nhLang.isNotEmpty()) {
+            try {
+                val url = "$baseUrl/search/?q=language:$nhLang&sort=popular&page=$page"
+                val response = client.get(url.toHttpUrl(), htmlHeaders)
+                val result = parseHtmlMangasPage(response)
+                if (result.mangas.isNotEmpty()) return result
+            } catch (_: Exception) {}
         }
-        val response = client.get(url.toHttpUrl(), htmlHeaders)
-        val result = parseHtmlMangasPage(response)
-        if (result.mangas.isNotEmpty()) return result
-        val fallbackResponse = client.get("$baseUrl/?page=$page".toHttpUrl(), htmlHeaders)
-        return parseHtmlMangasPage(fallbackResponse)
+        val response = client.get("$baseUrl/?page=$page".toHttpUrl(), htmlHeaders)
+        return parseHtmlMangasPage(response)
     }
 
     override suspend fun getLatestUpdates(page: Int): MangasPage = try {
@@ -161,16 +164,16 @@ class NHentai(
     }
 
     private suspend fun getLatestUpdatesHtml(page: Int): MangasPage {
-        val url = if (nhLang.isEmpty()) {
-            "$baseUrl/?page=$page"
-        } else {
-            "$baseUrl/language/$nhLang/?page=$page"
+        if (nhLang.isNotEmpty()) {
+            try {
+                val url = "$baseUrl/search/?q=language:$nhLang&page=$page"
+                val response = client.get(url.toHttpUrl(), htmlHeaders)
+                val result = parseHtmlMangasPage(response)
+                if (result.mangas.isNotEmpty()) return result
+            } catch (_: Exception) {}
         }
-        val response = client.get(url.toHttpUrl(), htmlHeaders)
-        val result = parseHtmlMangasPage(response)
-        if (result.mangas.isNotEmpty()) return result
-        val fallbackResponse = client.get("$baseUrl/?page=$page".toHttpUrl(), htmlHeaders)
-        return parseHtmlMangasPage(fallbackResponse)
+        val response = client.get("$baseUrl/?page=$page".toHttpUrl(), htmlHeaders)
+        return parseHtmlMangasPage(response)
     }
 
     override suspend fun getSearchMangaList(page: Int, query: String, filters: FilterList): MangasPage {
@@ -255,7 +258,7 @@ class NHentai(
         }
 
         val sort = filterList.firstInstanceOrNull<SortFilter>()?.toUriPart()
-        val url = "$baseUrl/search".toHttpUrl().newBuilder()
+        val url = "$baseUrl/search/".toHttpUrl().newBuilder()
             .addQueryParameter("q", fullQuery)
             .apply {
                 if (!sort.isNullOrEmpty() && sort != "date") {
