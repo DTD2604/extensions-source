@@ -110,6 +110,7 @@ class NHentai(
     private val htmlHeaders: Headers
         get() = headers.newBuilder()
             .set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+            .set("Accept-Language", "en-US,en;q=0.9")
             .build()
 
     override suspend fun getPopularManga(page: Int): MangasPage = try {
@@ -133,7 +134,7 @@ class NHentai(
 
     private suspend fun getPopularMangaHtml(page: Int): MangasPage {
         val url = if (nhLang.isEmpty()) {
-            "$baseUrl/?page=$page"
+            "$baseUrl/search/?q=pages:>0&sort=popular&page=$page"
         } else {
             "$baseUrl/search/?q=language:$nhLang&sort=popular&page=$page"
         }
@@ -215,7 +216,10 @@ class NHentai(
             "$apiUrl/search".toHttpUrl().newBuilder()
                 .addQueryParameter("query", fullQuery)
                 .apply {
-                    filterList.firstInstanceOrNull<SortFilter>()?.let { addQueryParameter("sort", it.toUriPart()) }
+                    val sort = filterList.firstInstanceOrNull<SortFilter>()?.toUriPart()
+                    if (!sort.isNullOrEmpty() && sort != "date") {
+                        addQueryParameter("sort", sort)
+                    }
                 }
         }
         url.addQueryParameter("page", offsetPage.toString())
@@ -245,7 +249,10 @@ class NHentai(
             "$baseUrl/search/".toHttpUrl().newBuilder()
                 .addQueryParameter("q", fullQuery)
                 .apply {
-                    filterList.firstInstanceOrNull<SortFilter>()?.let { addQueryParameter("sort", it.toUriPart()) }
+                    val sort = filterList.firstInstanceOrNull<SortFilter>()?.toUriPart()
+                    if (!sort.isNullOrEmpty() && sort != "date") {
+                        addQueryParameter("sort", sort)
+                    }
                 }
         }
         url.addQueryParameter("page", offsetPage.toString())
@@ -419,20 +426,28 @@ class NHentai(
 
     private fun parseHtmlMangasPage(response: Response): MangasPage {
         val doc = response.asJsoup()
-        val galleries = doc.select(".gallery")
+        val galleries = doc.select(".gallery, .gallery-item")
         val mangas = galleries.mapNotNull { element ->
             val link = element.selectFirst("a") ?: return@mapNotNull null
             val href = link.attr("href")
             val id = href.removeSurrounding("/g/", "/").takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
                 ?: return@mapNotNull null
+            val img = element.selectFirst("img")
             val rawTitle = element.selectFirst(".caption")?.text()?.trim()
                 ?: link.selectFirst(".caption")?.text()?.trim()
-                ?: return@mapNotNull null
-            if (rawTitle.isEmpty()) return@mapNotNull null
-            val img = element.selectFirst("img")
-            val thumb = img?.attr("data-src")?.ifEmpty { img.attr("src") }
-                ?: img?.attr("src")
-                ?: ""
+                ?: img?.attr("alt")?.trim()
+                ?: element.selectFirst("a > div")?.text()?.trim()
+                ?: link.selectFirst("div")?.text()?.trim()
+                ?: "Gallery $id"
+            val thumb = img?.let {
+                it.attr("data-src").ifEmpty {
+                    it.attr("src").ifEmpty {
+                        it.attr("data-original").ifEmpty {
+                            it.attr("srcset").substringBefore(" ")
+                        }
+                    }
+                }
+            } ?: ""
             val fullThumb = when {
                 thumb.startsWith("//") -> "https:$thumb"
                 thumb.startsWith("/") -> "$baseUrl$thumb"
@@ -446,8 +461,8 @@ class NHentai(
                 update_strategy = UpdateStrategy.ONLY_FETCH_ONCE
             }
         }
-        val hasNextPage = doc.select(".pagination .next, a.next").isNotEmpty()
-        return MangasPage(mangas, hasNextPage)
+        val hasNextPage = doc.select(".pagination .next, a.next, .pagination a:contains(>)").isNotEmpty()
+        return MangasPage(mangas.distinctBy { it.url }, hasNextPage)
     }
 
     private fun parseHtmlMangaDetails(doc: Document, id: String): SManga {

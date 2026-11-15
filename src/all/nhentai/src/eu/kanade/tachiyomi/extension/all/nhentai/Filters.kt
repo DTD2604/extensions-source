@@ -31,26 +31,31 @@ fun FilterList.combineQuery(): String = buildString {
             .map(String::trim)
             .filter(String::isNotEmpty)
             .forEach { tag ->
-                val y = !(filter.name == "Pages" || filter.name == "Uploaded")
+                val isQuoted = filter.queryKey != "pages" && filter.queryKey != "uploaded"
                 if (tag.startsWith("-")) append("-")
-                append(filter.name, ':')
-                if (y) append('"')
-                append(tag.removePrefix("-"))
-                if (y) append('"')
+                append(filter.queryKey, ':')
+                val cleanTag = tag.removePrefix("-").trim().removeSurrounding("\"")
+                if (isQuoted) {
+                    append('"')
+                    append(cleanTag)
+                    append('"')
+                } else {
+                    append(cleanTag)
+                }
                 append(" ")
             }
     }
 }
 
-class TagFilter : AdvSearchEntryFilter("Tags")
-class CategoryFilter : AdvSearchEntryFilter("Categories")
-class GroupFilter : AdvSearchEntryFilter("Groups")
-class ArtistFilter : AdvSearchEntryFilter("Artists")
-class ParodyFilter : AdvSearchEntryFilter("Parodies")
-class CharactersFilter : AdvSearchEntryFilter("Characters")
-class UploadedFilter : AdvSearchEntryFilter("Uploaded")
-class PagesFilter : AdvSearchEntryFilter("Pages")
-open class AdvSearchEntryFilter(name: String) : Filter.Text(name)
+class TagFilter : AdvSearchEntryFilter("Tags", "tag")
+class CategoryFilter : AdvSearchEntryFilter("Categories", "category")
+class GroupFilter : AdvSearchEntryFilter("Groups", "group")
+class ArtistFilter : AdvSearchEntryFilter("Artists", "artist")
+class ParodyFilter : AdvSearchEntryFilter("Parodies", "parody")
+class CharactersFilter : AdvSearchEntryFilter("Characters", "character")
+class UploadedFilter : AdvSearchEntryFilter("Uploaded", "uploaded")
+class PagesFilter : AdvSearchEntryFilter("Pages", "pages")
+open class AdvSearchEntryFilter(displayName: String, val queryKey: String) : Filter.Text(displayName)
 
 class OffsetPageFilter : Filter.Text("Offset results by # pages")
 
