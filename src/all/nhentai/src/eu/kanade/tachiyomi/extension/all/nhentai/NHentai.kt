@@ -131,9 +131,9 @@ class NHentai(
 
     private suspend fun getPopularMangaHtml(page: Int): MangasPage {
         val url = if (nhLang.isEmpty()) {
-            "$baseUrl/search/?q=pages:>0&sort=popular&page=$page"
+            "$baseUrl/popular/?page=$page"
         } else {
-            "$baseUrl/search/?q=language:$nhLang&sort=popular&page=$page"
+            "$baseUrl/language/$nhLang/popular/?page=$page"
         }
         val response = client.get(url.toHttpUrl(), htmlHeaders)
         val result = parseHtmlMangasPage(response)
@@ -164,7 +164,7 @@ class NHentai(
         val url = if (nhLang.isEmpty()) {
             "$baseUrl/?page=$page"
         } else {
-            "$baseUrl/search/?q=language:$nhLang&page=$page"
+            "$baseUrl/language/$nhLang/?page=$page"
         }
         val response = client.get(url.toHttpUrl(), htmlHeaders)
         val result = parseHtmlMangasPage(response)
@@ -180,54 +180,54 @@ class NHentai(
             else -> null
         }
         if (galleryId != null) {
-            return try {
-                MangasPage(listOf(getGalleryManga(galleryId)), false)
-            } catch (_: Exception) {
-                MangasPage(emptyList(), false)
-            }
+            return MangasPage(listOf(getGalleryManga(galleryId)), false)
         }
 
-        return try {
-            val res = try {
-                getSearchMangaListApi(page, query, filters)
-            } catch (_: Exception) {
-                null
-            }
-            if (res != null && res.mangas.isNotEmpty()) {
-                res
-            } else {
-                getSearchMangaListHtml(page, query, filters)
-            }
-        } catch (_: Exception) {
-            MangasPage(emptyList(), false)
-        }
-    }
-
-    private suspend fun getSearchMangaListApi(page: Int, query: String, filters: FilterList): MangasPage {
         val filterList = if (filters.isEmpty()) getFilterList(null) else filters
         val nhLangSearch = if (nhLang.isEmpty() || query.contains("language:")) "" else "language:$nhLang "
         val advQuery = filterList.combineQuery()
+        val fullQuery = "$query $nhLangSearch$advQuery".trim()
+        val sort = filterList.firstInstanceOrNull<SortFilter>()?.toUriPart()
+
+        if (fullQuery.isEmpty()) {
+            return if (!sort.isNullOrEmpty() && sort != "date") {
+                getPopularManga(page)
+            } else {
+                getLatestUpdates(page)
+            }
+        }
+
+        val res = try {
+            getSearchMangaListApi(page, fullQuery, filterList)
+        } catch (_: Exception) {
+            null
+        }
+        return if (res != null && res.mangas.isNotEmpty()) {
+            res
+        } else {
+            getSearchMangaListHtml(page, fullQuery, filterList)
+        }
+    }
+
+    private suspend fun getSearchMangaListApi(page: Int, fullQuery: String, filterList: FilterList): MangasPage {
         val favoriteFilter = filterList.firstInstanceOrNull<FavoriteFilter>()
         val offsetPage =
             filterList.firstInstanceOrNull<OffsetPageFilter>()?.state?.toIntOrNull()?.plus(page) ?: page
 
         if (favoriteFilter?.state == true) {
-            val favQuery = "$query $advQuery".trim()
             val favUrl = "$apiUrl/favorites".toHttpUrl().newBuilder()
                 .apply {
-                    if (favQuery.isNotEmpty()) {
-                        addQueryParameter("q", favQuery)
+                    if (fullQuery.isNotEmpty()) {
+                        addQueryParameter("q", fullQuery)
                     }
                 }
                 .addQueryParameter("page", offsetPage.toString())
             return client.get(favUrl.build(), apiHeaders).toMangasPage()
         }
 
-        val fullQuery = "$query $nhLangSearch$advQuery".trim()
-        val effectiveQuery = fullQuery.ifEmpty { "pages:>0" }
         val sort = filterList.firstInstanceOrNull<SortFilter>()?.toUriPart()
         val url = "$apiUrl/search".toHttpUrl().newBuilder()
-            .addQueryParameter("query", effectiveQuery)
+            .addQueryParameter("query", fullQuery)
             .apply {
                 if (!sort.isNullOrEmpty() && sort != "date") {
                     addQueryParameter("sort", sort)
@@ -237,20 +237,16 @@ class NHentai(
         return client.get(url.build(), apiHeaders).toMangasPage()
     }
 
-    private suspend fun getSearchMangaListHtml(page: Int, query: String, filters: FilterList): MangasPage {
-        val filterList = if (filters.isEmpty()) getFilterList(null) else filters
-        val nhLangSearch = if (nhLang.isEmpty() || query.contains("language:")) "" else "language:$nhLang "
-        val advQuery = filterList.combineQuery()
+    private suspend fun getSearchMangaListHtml(page: Int, fullQuery: String, filterList: FilterList): MangasPage {
         val favoriteFilter = filterList.firstInstanceOrNull<FavoriteFilter>()
         val offsetPage =
             filterList.firstInstanceOrNull<OffsetPageFilter>()?.state?.toIntOrNull()?.plus(page) ?: page
 
         if (favoriteFilter?.state == true) {
-            val favQuery = "$query $advQuery".trim()
             val favUrl = "$baseUrl/favorites/".toHttpUrl().newBuilder()
                 .apply {
-                    if (favQuery.isNotEmpty()) {
-                        addQueryParameter("q", favQuery)
+                    if (fullQuery.isNotEmpty()) {
+                        addQueryParameter("q", fullQuery)
                     }
                 }
                 .addQueryParameter("page", offsetPage.toString())
@@ -258,11 +254,9 @@ class NHentai(
             return parseHtmlMangasPage(response)
         }
 
-        val fullQuery = "$query $nhLangSearch$advQuery".trim()
-        val effectiveQuery = fullQuery.ifEmpty { "pages:>0" }
         val sort = filterList.firstInstanceOrNull<SortFilter>()?.toUriPart()
-        val url = "$baseUrl/search/".toHttpUrl().newBuilder()
-            .addQueryParameter("q", effectiveQuery)
+        val url = "$baseUrl/search".toHttpUrl().newBuilder()
+            .addQueryParameter("q", fullQuery)
             .apply {
                 if (!sort.isNullOrEmpty() && sort != "date") {
                     addQueryParameter("sort", sort)
@@ -346,7 +340,7 @@ class NHentai(
         return parseHtmlPages(response.asJsoup())
     }
 
-    override fun getFilterList(data: JsonElement?): FilterList = getFilters(preferences.getString(SORT_PREF, "popular"))
+    override fun getFilterList(data: JsonElement?): FilterList = getFilters(preferences.getString(SORT_PREF, "date"))
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         ListPreference(screen.context).apply {
@@ -372,7 +366,7 @@ class NHentai(
             entries = SORT_OPTIONS.map { it.first }.toTypedArray()
             entryValues = SORT_OPTIONS.map { it.second }.toTypedArray()
             summary = "%s"
-            setDefaultValue("popular")
+            setDefaultValue("date")
         }.also(screen::addPreference)
 
         EditTextPreference(screen.context).apply {
@@ -441,10 +435,9 @@ class NHentai(
         val doc = response.asJsoup()
         val galleries = doc.select(".gallery, .gallery-item")
         val mangas = galleries.mapNotNull { element ->
-            val link = element.selectFirst("a") ?: return@mapNotNull null
+            val link = element.selectFirst("a[href*=/g/]") ?: element.selectFirst("a") ?: return@mapNotNull null
             val href = link.attr("href")
-            val id = href.removeSurrounding("/g/", "/").takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
-                ?: return@mapNotNull null
+            val id = Regex("""/g/(\d+)""").find(href)?.groupValues?.get(1) ?: return@mapNotNull null
             val img = element.selectFirst("img")
             val rawTitle = element.selectFirst(".caption")?.text()?.trim()
                 ?: link.selectFirst(".caption")?.text()?.trim()
