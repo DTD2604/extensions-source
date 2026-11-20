@@ -123,14 +123,10 @@ class NHentai(
     }
 
     private suspend fun getPopularMangaApi(page: Int): MangasPage {
-        val url = if (nhLang.isEmpty()) {
-            "$apiUrl/galleries".toHttpUrl().newBuilder()
-        } else {
-            "$apiUrl/search".toHttpUrl().newBuilder()
-                .addQueryParameter("query", "language:$nhLang")
-                .addQueryParameter("sort", "popular")
-        }
-        url.addQueryParameter("page", page.toString())
+        val url = "$apiUrl/search".toHttpUrl().newBuilder()
+            .addQueryParameter("query", if (nhLang.isEmpty()) "\"\"" else "language:$nhLang")
+            .addQueryParameter("sort", "popular")
+            .addQueryParameter("page", page.toString())
         return client.get(url.build(), apiHeaders).toMangasPage()
     }
 
@@ -202,16 +198,28 @@ class NHentai(
             }
         }
 
+        var apiError: Exception? = null
         val res = try {
             getSearchMangaListApi(page, fullQuery, filterList)
-        } catch (_: Exception) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            apiError = e
             null
         }
-        return if (res != null && res.mangas.isNotEmpty()) {
-            res
-        } else {
+        if (res != null && res.mangas.isNotEmpty()) return res
+
+        val htmlRes = try {
             getSearchMangaListHtml(page, fullQuery, filterList)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw Exception("API: ${apiError?.message ?: "0 results"} | HTML: ${e.message}")
         }
+        if (htmlRes.mangas.isEmpty() && apiError != null) {
+            throw Exception("API: ${apiError.message} | query=$fullQuery")
+        }
+        return htmlRes
     }
 
     private suspend fun getSearchMangaListApi(page: Int, fullQuery: String, filterList: FilterList): MangasPage {
