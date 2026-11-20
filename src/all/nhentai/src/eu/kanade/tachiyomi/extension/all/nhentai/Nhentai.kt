@@ -53,7 +53,7 @@ class NHentai(
             "en" -> "english"
             "ja" -> "japanese"
             "zh" -> "chinese"
-            "vi" -> "vietnamese"
+            // nhentai has no "vietnamese" language tag (API returns HTTP 400), so "vi" searches all languages
             else -> ""
         }
 
@@ -123,22 +123,26 @@ class NHentai(
     }
 
     private suspend fun getPopularMangaApi(page: Int): MangasPage {
-        val url = "$apiUrl/tags/search".toHttpUrl().newBuilder()
-            .addQueryParameter("query", if (nhLang.isEmpty()) "\"\"" else "language:$nhLang")
+        val query = if (nhLang.isEmpty()) "*" else "language:$nhLang"
+        val url = "$apiUrl/search".toHttpUrl().newBuilder()
+            .addQueryParameter("query", query)
             .addQueryParameter("sort", "popular")
             .addQueryParameter("page", page.toString())
         return client.get(url.build(), apiHeaders).toMangasPage()
     }
 
     private suspend fun getPopularMangaHtml(page: Int): MangasPage {
-        if (nhLang.isNotEmpty()) {
-            try {
-                val url = "$baseUrl/search/?q=language:$nhLang&sort=popular&page=$page"
-                val response = client.get(url.toHttpUrl(), htmlHeaders)
-                val result = parseHtmlMangasPage(response)
-                if (result.mangas.isNotEmpty()) return result
-            } catch (_: Exception) {}
-        }
+        val query = if (nhLang.isEmpty()) "*" else "language:$nhLang"
+        try {
+            val url = "$baseUrl/search/".toHttpUrl().newBuilder()
+                .addQueryParameter("q", query)
+                .addQueryParameter("sort", "popular")
+                .addQueryParameter("page", page.toString())
+                .build()
+            val response = client.get(url, htmlHeaders)
+            val result = parseHtmlMangasPage(response)
+            if (result.mangas.isNotEmpty()) return result
+        } catch (_: Exception) {}
         val response = client.get("$baseUrl/?page=$page".toHttpUrl(), htmlHeaders)
         return parseHtmlMangasPage(response)
     }
@@ -154,7 +158,7 @@ class NHentai(
         val url = if (nhLang.isEmpty()) {
             "$apiUrl/galleries".toHttpUrl().newBuilder()
         } else {
-            "$apiUrl/tags/search".toHttpUrl().newBuilder()
+            "$apiUrl/search".toHttpUrl().newBuilder()
                 .addQueryParameter("query", "language:$nhLang")
         }
         url.addQueryParameter("page", page.toString())
@@ -185,18 +189,13 @@ class NHentai(
         }
 
         val filterList = if (filters.isEmpty()) getFilterList(null) else filters
-        val nhLangSearch = if (nhLang.isEmpty() || query.contains("language:")) "" else "language:$nhLang "
         val advQuery = filterList.combineQuery()
-        val fullQuery = "$query $nhLangSearch$advQuery".trim()
-        val sort = filterList.firstInstanceOrNull<SortFilter>()?.toUriPart()
-
-        if (fullQuery.isEmpty()) {
-            return if (!sort.isNullOrEmpty() && sort != "date") {
-                getPopularManga(page)
-            } else {
-                getLatestUpdates(page)
-            }
+        val nhLangSearch = if (nhLang.isEmpty() || query.contains("language:") || advQuery.contains("language:")) {
+            ""
+        } else {
+            "language:$nhLang "
         }
+        val fullQuery = "$query $nhLangSearch$advQuery".trim()
 
         var apiError: Exception? = null
         val res = try {
@@ -239,13 +238,17 @@ class NHentai(
         }
 
         val sort = filterList.firstInstanceOrNull<SortFilter>()?.toUriPart()
-        val url = "$apiUrl/tags/search".toHttpUrl().newBuilder()
-            .addQueryParameter("query", fullQuery)
-            .apply {
-                if (!sort.isNullOrEmpty() && sort != "date") {
-                    addQueryParameter("sort", sort)
+        val url = if (fullQuery.isEmpty() && (sort.isNullOrEmpty() || sort == "date")) {
+            "$apiUrl/galleries".toHttpUrl().newBuilder()
+        } else {
+            "$apiUrl/search".toHttpUrl().newBuilder()
+                .addQueryParameter("query", fullQuery.ifEmpty { "*" })
+                .apply {
+                    if (!sort.isNullOrEmpty() && sort != "date") {
+                        addQueryParameter("sort", sort)
+                    }
                 }
-            }
+        }
         url.addQueryParameter("page", offsetPage.toString())
         return client.get(url.build(), apiHeaders).toMangasPage()
     }
@@ -268,16 +271,31 @@ class NHentai(
         }
 
         val sort = filterList.firstInstanceOrNull<SortFilter>()?.toUriPart()
+        if (fullQuery.isEmpty() && (sort.isNullOrEmpty() || sort == "date")) {
+            val response = client.get("$baseUrl/?page=$offsetPage".toHttpUrl(), htmlHeaders)
+            return parseHtmlMangasPage(response)
+        }
+
         val url = "$baseUrl/search/".toHttpUrl().newBuilder()
-            .addQueryParameter("q", fullQuery)
+            .addQueryParameter("q", fullQuery.ifEmpty { "*" })
             .apply {
                 if (!sort.isNullOrEmpty() && sort != "date") {
                     addQueryParameter("sort", sort)
                 }
             }
-        url.addQueryParameter("page", offsetPage.toString())
-        val response = client.get(url.build(), htmlHeaders)
-        return parseHtmlMangasPage(response)
+            .addQueryParameter("page", offsetPage.toString())
+            .build()
+
+        if (fullQuery.isEmpty()) {
+            return try {
+                val res = parseHtmlMangasPage(client.get(url, htmlHeaders))
+                if (res.mangas.isNotEmpty()) res else parseHtmlMangasPage(client.get("$baseUrl/?page=$offsetPage".toHttpUrl(), htmlHeaders))
+            } catch (_: Exception) {
+                parseHtmlMangasPage(client.get("$baseUrl/?page=$offsetPage".toHttpUrl(), htmlHeaders))
+            }
+        }
+
+        return parseHtmlMangasPage(client.get(url, htmlHeaders))
     }
 
     override suspend fun getMangaByUrl(url: HttpUrl): SManga? {
@@ -744,12 +762,15 @@ class GalleryItem(
             ?: title?.pretty
             ?: return null
         val thumbPath = thumbnail ?: mediaId?.let { "galleries/$it/thumb.webp" } ?: return null
-        val host = thumbServer.removeSuffix("/")
-        val path = thumbPath.removePrefix("/")
+        val resolvedThumb = when {
+            thumbPath.startsWith("http") -> thumbPath
+            thumbPath.startsWith("//") -> "https:$thumbPath"
+            else -> "${thumbServer.removeSuffix("/")}/${thumbPath.removePrefix("/")}"
+        }
         return SManga.create().apply {
             url = "/g/$id/"
             title = if (fullTitle) rawTitle else rawTitle.shortenTitle()
-            thumbnail_url = "$host/$path"
+            thumbnail_url = resolvedThumb
             status = SManga.COMPLETED
             update_strategy = UpdateStrategy.ONLY_FETCH_ONCE
         }

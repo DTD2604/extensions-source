@@ -32,10 +32,14 @@ fun FilterList.combineQuery(): String = buildString {
             .filter(String::isNotEmpty)
             .forEach { tag ->
                 val isQuoted = filter.queryKey != "pages" && filter.queryKey != "uploaded"
-                val isNegative = tag.startsWith("-")
+                var isNegative = tag.startsWith("-")
                 var cleanTag = tag.removePrefix("-").trim()
                 if (cleanTag.startsWith("${filter.queryKey}:", ignoreCase = true)) {
                     cleanTag = cleanTag.substring("${filter.queryKey}:".length).trim()
+                }
+                if (cleanTag.startsWith("-")) {
+                    isNegative = true
+                    cleanTag = cleanTag.removePrefix("-").trim()
                 }
                 cleanTag = cleanTag.removeSurrounding("\"").trim()
                 if (!isQuoted) {
