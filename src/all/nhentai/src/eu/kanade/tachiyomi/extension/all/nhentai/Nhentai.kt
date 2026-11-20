@@ -123,7 +123,7 @@ class NHentai(
     }
 
     private suspend fun getPopularMangaApi(page: Int): MangasPage {
-        val url = "$apiUrl/search".toHttpUrl().newBuilder()
+        val url = "$apiUrl/tags/search".toHttpUrl().newBuilder()
             .addQueryParameter("query", if (nhLang.isEmpty()) "\"\"" else "language:$nhLang")
             .addQueryParameter("sort", "popular")
             .addQueryParameter("page", page.toString())
@@ -154,7 +154,7 @@ class NHentai(
         val url = if (nhLang.isEmpty()) {
             "$apiUrl/galleries".toHttpUrl().newBuilder()
         } else {
-            "$apiUrl/search".toHttpUrl().newBuilder()
+            "$apiUrl/tags/search".toHttpUrl().newBuilder()
                 .addQueryParameter("query", "language:$nhLang")
         }
         url.addQueryParameter("page", page.toString())
@@ -239,7 +239,7 @@ class NHentai(
         }
 
         val sort = filterList.firstInstanceOrNull<SortFilter>()?.toUriPart()
-        val url = "$apiUrl/search".toHttpUrl().newBuilder()
+        val url = "$apiUrl/tags/search".toHttpUrl().newBuilder()
             .addQueryParameter("query", fullQuery)
             .apply {
                 if (!sort.isNullOrEmpty() && sort != "date") {
