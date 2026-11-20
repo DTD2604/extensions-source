@@ -22,6 +22,8 @@ import keiyoushi.source.KeiSource
 import keiyoushi.utils.firstInstanceOrNull
 import keiyoushi.utils.getPreferencesLazy
 import keiyoushi.utils.parseAs
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import okhttp3.CacheControl
 import okhttp3.Headers
@@ -699,4 +701,150 @@ class NHentai(
         private const val TITLE_PREF = "Display manga title as:"
         private const val SORT_PREF = "Default sort preference when searching"
     }
+}
+
+// ============================== DTOs & Models ==============================
+
+@Serializable
+class NHConfig(
+    @SerialName("image_servers") val imageServers: List<String>,
+    @SerialName("thumb_servers") val thumbServers: List<String>,
+)
+
+@Serializable
+class PaginatedResponse<T>(
+    val result: List<T> = listOf(),
+    @SerialName("per_page") val perPage: Int = 0,
+    @SerialName("num_pages") val numPages: Int? = null,
+    val total: Int? = null,
+)
+
+@Serializable
+class GalleryItem(
+    private val id: Int,
+    private val thumbnail: String? = null,
+    @SerialName("media_id") private val mediaId: String? = null,
+    private val title: Title? = null,
+    @SerialName("english_title") private val englishTitle: String? = null,
+    @SerialName("japanese_title") private val japaneseTitle: String? = null,
+) {
+    fun toSMangaOrNull(thumbServer: String, fullTitle: Boolean): SManga? {
+        val rawTitle = englishTitle
+            ?: japaneseTitle
+            ?: title?.english
+            ?: title?.japanese
+            ?: title?.pretty
+            ?: return null
+        val thumbPath = thumbnail ?: mediaId?.let { "galleries/$it/thumb.webp" } ?: return null
+        val host = thumbServer.removeSuffix("/")
+        val path = thumbPath.removePrefix("/")
+        return SManga.create().apply {
+            url = "/g/$id/"
+            title = if (fullTitle) rawTitle else rawTitle.shortenTitle()
+            thumbnail_url = "$host/$path"
+            status = SManga.COMPLETED
+            update_strategy = UpdateStrategy.ONLY_FETCH_ONCE
+        }
+    }
+}
+
+@Serializable
+class Hentai(
+    private val id: Int,
+    val pages: List<Image> = emptyList(),
+    private val thumbnail: Image,
+    val tags: List<Tag>,
+    private val title: Title,
+    @SerialName("upload_date") private val uploadDate: Long,
+    @SerialName("num_favorites") private val numFavorites: Long,
+    @SerialName("num_pages") private val numPages: Int,
+) {
+    fun toSManga(thumbServer: String, fullTitle: Boolean) = SManga.create().apply {
+        val titles = this@Hentai.title
+        url = "/g/$id/"
+        title = if (fullTitle) {
+            titles.english ?: titles.japanese ?: titles.pretty!!
+        } else {
+            titles.pretty ?: (titles.english ?: titles.japanese)!!.shortenTitle()
+        }
+        val host = thumbServer.removeSuffix("/")
+        val path = thumbnail.path.removePrefix("/")
+        thumbnail_url = "$host/$path"
+        status = SManga.COMPLETED
+        artist = getArtists(this@Hentai)
+        author = getGroups(this@Hentai) ?: getArtists(this@Hentai)
+        description = buildString {
+            append("Full English and Japanese titles:\n")
+            append("${titles.english ?: titles.japanese ?: titles.pretty ?: ""}\n")
+            append(titles.japanese ?: "")
+            append("\n\n")
+            append("Pages: $numPages\n")
+            append("Favorited by: $numFavorites\n")
+            append(getTagDescription(this@Hentai))
+        }
+        genre = getTags(this@Hentai)
+        update_strategy = UpdateStrategy.ONLY_FETCH_ONCE
+    }
+
+    fun toSChapter() = SChapter.create().apply {
+        name = "Chapter"
+        scanlator = getGroups(this@Hentai)
+        date_upload = uploadDate * 1000
+        url = "/g/$id/"
+    }
+}
+
+@Serializable
+class Title(
+    val english: String? = null,
+    val japanese: String? = null,
+    val pretty: String? = null,
+)
+
+@Serializable
+class Image(
+    val path: String,
+)
+
+@Serializable
+class Tag(
+    val name: String,
+    val type: String,
+)
+
+// ============================== Utils ==============================
+
+private val shortenTitleRegex = Regex("""(\[[^]]*]|[({][^)}]*[)}])""")
+
+fun String.shortenTitle() = replace(shortenTitleRegex, "").trim()
+
+fun getArtists(data: Hentai): String {
+    val artists = data.tags.filter { it.type == "artist" }
+    return artists.joinToString { it.name }
+}
+
+fun getGroups(data: Hentai): String? {
+    val groups = data.tags.filter { it.type == "group" }
+    return groups.joinToString { it.name }.takeIf { it.isNotEmpty() }
+}
+
+fun getTagDescription(data: Hentai): String {
+    val tags = data.tags.groupBy { it.type }
+    return buildString {
+        tags["category"]?.joinToString { it.name }?.let {
+            append("Categories: ", it, "\n")
+        }
+        tags["parody"]?.joinToString { it.name }?.let {
+            append("Parodies: ", it, "\n")
+        }
+        tags["character"]?.joinToString { it.name }?.let {
+            append("Characters: ", it, "\n")
+        }
+        append("\n")
+    }
+}
+
+fun getTags(data: Hentai): String {
+    val tags = data.tags.filter { it.type == "tag" }
+    return tags.map { it.name }.sorted().joinToString()
 }
